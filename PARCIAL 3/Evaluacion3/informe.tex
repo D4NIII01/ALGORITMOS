@@ -1,0 +1,182 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[margin=2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[font=small]{caption}
+\usepackage{enumitem}
+\setlist{nosep}
+\setlength{\parskip}{3pt}
+\setlength{\parindent}{0pt}
+
+% --- Texto rojo en negrita para lo que debes rellenar con TUS resultados ---
+\newcommand{\pend}[1]{\textcolor{red}{\textbf{#1}}}
+
+% --- Inserta una imagen; si no existe todavia, muestra un recuadro ---
+\newcommand{\figura}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=#2\textwidth]{#1}}%
+  {\fbox{\parbox{0.6\textwidth}{\centering Falta la imagen \texttt{\detokenize{#1}}}}}}
+
+\title{Integración de Monte Carlo: momento de inercia de un disco con densidad variable\\[2pt]
+\large Algoritmos y Arquitecturas Computacionales de Alto Rendimiento -- Evaluación 3, 2026-2}
+\author{\pend{Nombre y código} \\ Universidad Industrial de Santander}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+%====================================================================
+\section{Método}
+Se considera un disco delgado de radio $R$ con densidad superficial $\rho(x,y)=\rho_0(1+r/R)$, $r=\sqrt{x^2+y^2}$. Su momento de inercia respecto al eje $z$ es
+\begin{equation}
+I=\iint_D \rho(x,y)\, r^2\, dA ,
+\end{equation}
+con solución analítica $I_{\text{exacto}}=\tfrac{9}{10}\pi\rho_0R^4$. En coordenadas polares, $I=2\pi\rho_0\int_0^R(1+r/R)\,r^3\,dr=2\pi\rho_0R^4\left(\tfrac14+\tfrac15\right)$, que coincide con ese valor. Con $\rho_0=R=1$ se tiene $I_{\text{exacto}}\approx 2.827433$.
+
+\textbf{Estimador.} El disco no es un rectángulo, así que se muestrean $N$ puntos $(x_i,y_i)$ uniformes en el cuadrado $[-R,R]^2$, de área $A=4R^2$, y se usa una función indicadora que vale 1 dentro del disco y 0 fuera:
+\begin{equation}
+I\approx \hat I_N = A\,\frac1N\sum_{i=1}^{N}f_i,\qquad f_i=\rho(x_i,y_i)\,r_i^2\,\mathbf 1[r_i\le R].
+\end{equation}
+El estimador es un promedio de variables aleatorias independientes, por lo que es insesgado, y su error estadístico es $\sigma_I = A\,s/\sqrt N$, donde $s$ es la desviación estándar muestral de los $f_i$. Por tanto el error esperado decae como $N^{-1/2}$ (pendiente $-1/2$ en escala log-log), independientemente de la dimensión del problema.
+
+%====================================================================
+\section{Nivel 1: versión secuencial y validación}
+El programa (\texttt{NumPy}) calcula $\hat I_N$ para $N=10^3,\dots,10^7$. La Tabla~\ref{tab:n1} compara con $I_{\text{exacto}}$. Como un solo cálculo es ruidoso, la última columna promedia el error absoluto sobre 20 repeticiones independientes.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{rcccc}
+\toprule
+$N$ & $\hat I_N$ & Error absoluto & Error estadístico $\sigma_I$ & Error medio (20 rep.)\\
+\midrule
+$10^3$ & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^4$ & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^5$ & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^6$ & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^7$ & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+\bottomrule
+\end{tabular}
+\caption{Validación contra $I_{\text{exacto}}=2.827433$ (datos de \texttt{resultados\_nivel1.csv}).}
+\label{tab:n1}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\figura{Evaluacion3/nivel1/convergencia.png}{0.55}
+\caption{Error absoluto medio frente a $N$ en escala log-log, junto a una recta de pendiente $-1/2$.}
+\label{fig:conv}
+\end{figure}
+
+\textbf{Análisis.} La pendiente ajustada en log-log fue \pend{valor} (esperada: $-0.5$). \pend{Comenta con tus palabras: ¿el error decae como $1/\sqrt N$? ¿Hay desviaciones para $N$ pequeño y a qué se deben? ¿El error absoluto de una corrida es consistente con $\sigma_I$?}
+
+%====================================================================
+\section{Niveles 2 y 3: paralelización en CPU y GPU}
+\textbf{CPU (Numba).} Se escribió el bucle con \texttt{@njit} (secuencial) y con \texttt{@njit(parallel=True)} y \texttt{prange}, que reparte las iteraciones entre los núcleos y combina automáticamente las sumas parciales. Los tiempos son el mejor de 3 mediciones, tras una llamada de calentamiento que excluye la compilación JIT. La máquina usada tiene \pend{n} núcleos (\pend{modelo de CPU / Colab}).
+
+\textbf{GPU (Numba CUDA).} Cada hilo tiene su propio estado del generador \texttt{xoroshiro128p}, genera sus puntos, acumula una suma parcial y la guarda en un arreglo; la suma final de esas parciales se hace en la CPU. Se usaron \pend{256} hilos por bloque, hasta \pend{100\,000} hilos en total, $N/\text{hilos}$ muestras por hilo y \texttt{float64}. GPU usada: \pend{modelo, p.\,ej. Tesla T4 de Colab}.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{rccccc}
+\toprule
+$N$ & $T_{\text{sec}}$ (s) & $T_{\text{par}}$ (s) & $T_{\text{GPU}}$ (s) & $S_{\text{CPU}}$ & $S_{\text{GPU}}$\\
+\midrule
+$10^4$ & \pend{--} & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^5$ & \pend{--} & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^6$ & \pend{--} & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^7$ & \pend{--} & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+$10^8$ & \pend{--} & \pend{--} & \pend{--} & \pend{--} & \pend{--}\\
+\bottomrule
+\end{tabular}
+\caption{Tiempos y speedup $S=T_{\text{sec}}/T$ (datos de \texttt{resultados\_nivel3.csv}).}
+\label{tab:speed}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\figura{Evaluacion3/nivel3/speedup_total.png}{0.55}
+\caption{Speedup respecto a la CPU secuencial en función de $N$, para CPU paralela y GPU.}
+\label{fig:speed}
+\end{figure}
+
+\textbf{Speedup para $N$ pequeño.} Paralelizar tiene un costo fijo: crear y sincronizar hilos y combinar sus resultados en la CPU; en la GPU se suman el lanzamiento del kernel y la copia de resultados a la memoria del computador. Cuando $N$ es pequeño, el cálculo total dura microsegundos y ese costo domina, por lo que el speedup es bajo o menor que 1. Al crecer $N$, el costo fijo se diluye y el speedup se acerca al máximo que permite el hardware. \pend{Complementa con lo que observes en tu Tabla~\ref{tab:speed}: ¿a partir de qué $N$ compensa paralelizar y qué speedup máximo obtuviste en CPU y en GPU?}
+
+\textbf{Verificación del resultado en GPU.} La Tabla~\ref{tab:gpu} compara $I_{\text{GPU}}$ con $I_{\text{exacto}}$ y con tres veces el error estadístico $\sigma_I$.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{rccc}
+\toprule
+$N$ & $I_{\text{GPU}}$ & $|I_{\text{GPU}}-I_{\text{exacto}}|$ & $3\sigma_I$\\
+\midrule
+$10^4$ & \pend{--} & \pend{--} & \pend{--}\\
+$10^5$ & \pend{--} & \pend{--} & \pend{--}\\
+$10^6$ & \pend{--} & \pend{--} & \pend{--}\\
+$10^7$ & \pend{--} & \pend{--} & \pend{--}\\
+$10^8$ & \pend{--} & \pend{--} & \pend{--}\\
+\bottomrule
+\end{tabular}
+\caption{Verificación de la versión GPU dentro del error estadístico.}
+\label{tab:gpu}
+\end{table}
+
+%====================================================================
+\section{Observaciones}
+\begin{itemize}
+\item El estimador de Monte Carlo reproduce $I_{\text{exacto}}$ y su error decae como $N^{-1/2}$: \pend{resume tu resultado}.
+\item La paralelización en CPU \pend{resume el speedup obtenido y su relación con el número de núcleos}.
+\item La GPU \pend{resume el speedup obtenido y cuándo compensa}, y su resultado coincide con la CPU dentro del error estadístico.
+\item Los tiempos dependen de la máquina; \pend{menciona si CPU y GPU se midieron en la misma máquina, p.\,ej. Colab}.
+\end{itemize}
+
+%====================================================================
+\appendix
+\newpage
+\section*{Anexo: Bitácora de uso de IA (nivel 3)}
+\pend{Rellena cada apartado con lo que realmente hiciste. Esta sección no cuenta en el límite de 3 páginas.}
+
+\subsection*{1. Herramientas utilizadas}
+\pend{Nombre de cada herramienta, versión o modelo si lo conoces, y para qué la usaste.}
+
+\subsection*{2. Prompts (en orden cronológico)}
+\pend{Pega el texto completo de cada prompt enviado.}
+\begin{enumerate}
+\item \pend{Prompt 1}
+\item \pend{Prompt 2}
+\end{enumerate}
+
+\subsection*{3. Respuestas y cambios}
+\pend{Qué código o explicación propuso la IA, qué aceptaste, qué modificaste y por qué.}
+
+\subsection*{4. Errores detectados}
+\pend{Errores o sugerencias incorrectas de la IA que encontraste y cómo los corregiste. Si no hubo, dilo.}
+
+\subsection*{5. Explicación del código con tus palabras}
+\textbf{Generación de números aleatorios:} \pend{...}\\
+\textbf{Reparto del trabajo entre hilos y bloques:} \pend{...}\\
+\textbf{Suma de los resultados parciales (reducción):} \pend{...}
+
+\subsection*{6. Decisiones tomadas}
+\begin{center}\small
+\begin{tabular}{p{4cm}p{3cm}p{7.5cm}}
+\toprule
+Decisión & Valor & Justificación\\
+\midrule
+Hilos por bloque & \pend{256} & \pend{...}\\
+Número de bloques & \pend{$\lceil \text{hilos}/256\rceil$} & \pend{...}\\
+Muestras por hilo & \pend{$N/\text{hilos}$} & \pend{...}\\
+Tipo de dato & \pend{float64} & \pend{...}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{7. Verificación}
+\pend{Cómo comprobaste que el resultado es correcto (comparación con $I_{\text{exacto}}$, con la CPU y con $3\sigma_I$, Tabla~\ref{tab:gpu}).}
+
+\end{document}

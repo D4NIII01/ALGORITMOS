@@ -1,0 +1,8 @@
+n  p  convergidas_iguales  max|dif|   allclose  deriva_E_max
+2  2  True                 0.00e+00   True      6.04e-08
+4  2  True                 0.00e+00   True      7.88e-08
+4  4  True                 0.00e+00   True      7.88e-08
+8  2  True                 0.00e+00   True      1.97e-07
+8  4  True                 0.00e+00   True      1.97e-07
+16 2  True                 0.00e+00   True      4.90e-06
+16 4  True                 0.00e+00   True      4.90e-06
